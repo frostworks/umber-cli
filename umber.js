@@ -67,12 +67,53 @@ program
           topicDataForToc.slug = existingTopic.slug;
           
           if (existingTopic.customData.contentHash !== hash) {
-            // Update logic here...
+            console.log(chalk.cyan(`Content has changed. Updating topic TID: ${existingTopic.tid}...`));
+            // For now, updateTopic is simple and doesn't re-chunk.
+            await nodebb.updateTopic(existingTopic.tid, existingTopic.mainPid, { 
+              content: `\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${contentStr}\n\`\`\``,
+              customData: { ...existingTopic.customData, contentHash: hash }
+            });
           } else {
             console.log(chalk.gray('Content is unchanged. Skipping.'));
           }
         } else {
-          // Create logic here...
+          const pathTags = directoryPath.split(path.sep).filter(p => p !== '.');
+          const allTags = [...pathTags, filenameTag];
+          
+          const chunks = utils.chunkText(contentStr);
+          const mainPostContent = `\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${chunks[0]}\n\`\`\``;
+
+          const newTopicData = await nodebb.createTopic({
+            cid: parentCid,
+            title: fileName,
+            content: mainPostContent,
+            _uid: config.importer_uid,
+            tags: allTags,
+            customData: {
+              source: 'github',
+              repoUrl,
+              filePath: normalizedFilePath,
+              contentHash: hash,
+              isChunked: chunks.length > 1,
+              chunkCount: chunks.length,
+            }
+          });
+
+          // If the topic was created, add its data for the ToC
+          if (newTopicData && newTopicData.tid) {
+            topicDataForToc.tid = newTopicData.tid;
+            topicDataForToc.slug = newTopicData.slug;
+
+            // And if it was chunked, create the replies
+            if (chunks.length > 1) {
+              console.log(chalk.blue(`Content split into ${chunks.length} posts.`));
+              for (let i = 1; i < chunks.length; i++) {
+                const replyContent = `*(Continued from post ${i})*\n\n\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${chunks[i]}\n\`\`\``;
+                await nodebb.createReply({ tid: newTopicData.tid, content: replyContent, _uid: config.importer_uid });
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+          }
         }
         
         if (topicDataForToc.tid) {
