@@ -53,16 +53,13 @@ program
         const existingTopic = await nodebb.findTopicByMetadata(encodedPath);
 
         if (existingTopic) {
-            // For now, we only update topics that were NOT chunked.
-            // A robust update for chunked topics is a more complex feature.
             if (existingTopic.customData.isChunked) {
                  console.log(chalk.yellow('Topic was chunked. Update logic is not yet implemented. Skipping.'));
                  continue;
             }
           
             if (existingTopic.customData.contentHash !== hash) {
-                // If the new content is too large, we can't update it in one go. Skip for now.
-                if (contentStr.length > 32768) { // Using NodeBB's default limit
+                if (contentStr.length > 32768) {
                     console.log(chalk.yellow(`Content has changed and now exceeds post limit. Update logic for chunking not implemented. Skipping.`));
                     continue;
                 }
@@ -74,44 +71,46 @@ program
                 console.log(chalk.gray('Content is unchanged. Skipping.'));
             }
         } else {
-          // --- NEW CHUNKING & POSTING LOGIC ---
           const { cid } = await nodebb.findOrCreateCategoryByPath(path.dirname(normalizedFilePath));
           const chunks = utils.chunkText(contentStr);
-
-          // Format the first chunk as the main topic post
           const mainPostContent = `\`\`\`${fileExtension.replace('.','') || 'text'}\n${chunks[0]}\n\`\`\``;
 
           const topicResponse = await nodebb.createTopic({
             cid,
             title: fileName,
             content: mainPostContent,
+            _uid: config.importer_uid, // Pass UID for topic creation too
             tags: [encodedPath, fileExtension.replace('.','')].filter(Boolean),
             customData: {
               source: 'github',
               repoUrl: repoUrl,
               filePath: normalizedFilePath,
               contentHash: hash,
-              isChunked: chunks.length > 1, // Add metadata to know it was split
+              isChunked: chunks.length > 1,
               chunkCount: chunks.length,
             }
           });
 
-          // If there are more chunks, post them as replies
           if (chunks.length > 1) {
             console.log(chalk.blue(`Content split into ${chunks.length} posts.`));
             for (let i = 1; i < chunks.length; i++) {
               const replyContent = `*(Continued from post ${i})*\n\n\`\`\`${fileExtension.replace('.','') || 'text'}\n${chunks[i]}\n\`\`\``;
-              await nodebb.createReply({ tid: topicResponse.tid, content: replyContent });
-              await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limit replies
+              // Pass the UID to the createReply function
+              await nodebb.createReply({ tid: topicResponse.tid, content: replyContent, _uid: config.importer_uid });
+              await new Promise(resolve => setTimeout(resolve, 1000));
             }
           }
         }
       }
       
-      console.log(chalk.bold.magenta('\n--- Import Process Complete ---'));
+      console.log(chalk.bold.magenta('\n\n--- Import Process Complete ---'));
 
     } catch (error) {
       console.error(chalk.red.bold('\n--- Import Process Failed ---'));
+      // Add more detailed error logging
+      if (error.stack) {
+        console.error(error.stack);
+      }
       process.exit(1);
     }
   });
