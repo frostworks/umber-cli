@@ -79,6 +79,7 @@ program
             cid: parentCid,
             title: fileName,
             content: mainPostContent,
+            summary: contentStr.substring(0, 250) + (contentStr.length > 250 ? '...' : ''), // The new summary line
             _uid: config.importer_uid,
             tags: allTags,
             customData: {
