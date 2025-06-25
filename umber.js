@@ -34,7 +34,7 @@ program
       process.exit(1);
     }
 
-    const tocEntries = []; // Initialize array to hold ToC data
+    const tocEntries = [];
 
     try {
       const files = await github.fetchRepoContents(repoUrl, config.ignored_paths);
@@ -77,10 +77,7 @@ program
           const mainPostContent = `\`\`\`${fileExtension.replace('.','') || 'text'}\n${chunks[0]}\n\`\`\``;
 
           const newTopicData = await nodebb.createTopic({
-            cid,
-            title: fileName,
-            content: mainPostContent,
-            _uid: config.importer_uid,
+            cid, title: fileName, content: mainPostContent, _uid: config.importer_uid,
             tags: [encodedPath, fileExtension.replace('.','')].filter(Boolean),
             customData: {
               source: 'github', repoUrl, filePath: normalizedFilePath, contentHash: hash,
@@ -100,19 +97,30 @@ program
             }
           }
         }
-        tocEntries.push(topicDataForToc);
+        // Only add to ToC if the topic was successfully found or created
+        if (topicDataForToc.tid) {
+            tocEntries.push(topicDataForToc);
+        }
       }
 
-      // --- NEW: Post the Table of Contents at the end ---
       if (config.generate_toc && tocEntries.length > 0) {
+        // We'll need to find the ToC topic to see if we should update or create
+        const tocTopic = await nodebb.findTopicByMetadata(utils.encodePath(config.toc_title));
         const tocMarkdown = utils.generateTocMarkdown(tocEntries, config);
-        await nodebb.createTopic({
-            cid: config.toc_cid,
-            title: config.toc_title,
-            content: tocMarkdown,
-            _uid: config.importer_uid,
-        });
-        console.log(chalk.green.bold(`\nSuccessfully created Table of Contents topic!`));
+
+        if (tocTopic) {
+            console.log(chalk.cyan(`Updating existing Table of Contents topic...`));
+            await nodebb.updateTopic(tocTopic.tid, tocTopic.mainPid, { content: tocMarkdown });
+        } else {
+            await nodebb.createTopic({
+                cid: config.toc_cid,
+                title: config.toc_title,
+                content: tocMarkdown,
+                _uid: config.importer_uid,
+                tags: [utils.encodePath(config.toc_title)] // Tag the ToC so we can find it later
+            });
+            console.log(chalk.green.bold(`\nSuccessfully created Table of Contents topic!`));
+        }
       }
       
       console.log(chalk.bold.magenta('\n\n--- Import Process Complete ---'));
