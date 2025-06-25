@@ -3,7 +3,7 @@
   "nodebb_api_token": "YOUR_MASTER_TOKEN_HERE",
   "importer_uid": 1,
   "target_repo_url": "https://github.com/athros/ADOM_Guidebook",
-  "ignored_paths": [".git", ".github", "README.md"]",
+  "ignored_paths": [".git", ".github", "README.md"],
   "master_category_name": "ADOM Guidebook Import",
   "generate_toc": true,
   "toc_title": "Master Table of Contents",
