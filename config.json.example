@@ -1,0 +1,6 @@
+{
+  "nodebb_url": "https://your-nodebb-forum.com",
+  "nodebb_api_token": "YOUR_NODEBB_MASTER_TOKEN_HERE",
+  "target_repo_url": "https://github.com/athros/ADOM_Guidebook",
+  "ignored_paths": [".git", ".github", "README.md"]
+}
