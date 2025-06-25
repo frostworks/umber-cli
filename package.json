@@ -8,7 +8,9 @@
     "umber-cli": "./umber.js"
   },
   "scripts": {
-    "start": "node umber.js"
+    "start": "node umber.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "author": "psychobunny&gemini",
   "license": "MIT",
@@ -18,5 +20,10 @@
     "commander": "^12.1.0",
     "fs-extra": "^11.2.0",
     "tar": "^7.1.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-import": "^2.32.0"
   }
 }

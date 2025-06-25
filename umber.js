@@ -27,7 +27,7 @@ program
     }
     const config = await fs.readJson(configPath);
     nodebb.init(config);
-    
+
     const repoUrl = options.repo || config.target_repo_url;
     if (!repoUrl) {
       console.error(chalk.red('Error: Repository URL must be provided via --repo option or in config.json.'));
@@ -43,11 +43,11 @@ program
 
       const files = await github.fetchRepoContents(repoUrl, config.ignored_paths);
       console.log(chalk.magenta(`\nFound ${files.length} files to process.`));
-      
+
       for (const file of files) {
         const normalizedFilePath = path.normalize(file.filePath);
         console.log(`\nProcessing: ${chalk.bold(normalizedFilePath)}`);
-        
+
         const contentStr = file.content.toString('utf-8');
         // Normalize all line endings to \n before hashing
         const normalizedContent = contentStr.replace(/\r\n/g, '\n');
@@ -60,28 +60,28 @@ program
         const { cid: parentCid } = await nodebb.findOrCreateCategoryByPath(directoryPath, masterCid);
 
         const filenameTag = utils.createFilenameTag(fileName);
-        let existingTopic = await nodebb.findTopicByMetadata(filenameTag, parentCid);
-        
-        let topicDataForToc = { filePath: normalizedFilePath, title: fileName };
+        const existingTopic = await nodebb.findTopicByMetadata(filenameTag, parentCid);
+
+        const topicDataForToc = { filePath: normalizedFilePath, title: fileName };
 
         if (existingTopic) {
           topicDataForToc.tid = existingTopic.tid;
           topicDataForToc.slug = existingTopic.slug;
-          
+
           if (existingTopic.customData.contentHash !== hash) {
             console.log(chalk.cyan(`Content has changed. Updating topic TID: ${existingTopic.tid}...`));
             // For now, updateTopic is simple and doesn't re-chunk.
-            await nodebb.updateTopic(existingTopic.tid, existingTopic.mainPid, { 
-              content: `\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${contentStr}\n\`\`\``,
-              customData: { ...existingTopic.customData, contentHash: hash }
+            await nodebb.updateTopic(existingTopic.tid, existingTopic.mainPid, {
+              content: `\`\`\`${path.extname(fileName).replace('.', '') || 'text'}\n${contentStr}\n\`\`\``,
+              customData: { ...existingTopic.customData, contentHash: hash },
             });
           } else {
             console.log(chalk.gray('Content is unchanged. Skipping.'));
           }
         } else {
-          const pathTags = directoryPath.split(path.sep).filter(p => p !== '.');
+          const pathTags = directoryPath.split(path.sep).filter((p) => p !== '.');
           const allTags = [...pathTags, filenameTag];
-          const mainPostContent = `\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${contentStr}\n\`\`\``;
+          const mainPostContent = `\`\`\`${path.extname(fileName).replace('.', '') || 'text'}\n${contentStr}\n\`\`\``;
 
           await nodebb.createTopic({
             cid: parentCid,
@@ -89,15 +89,15 @@ program
             content: mainPostContent,
             _uid: config.importer_uid,
             tags: allTags,
-                customData: {
-                    source: 'github',
-                    repoUrl,
-                    filePath: normalizedFilePath,
-                    contentHash: hash,
-                }
-            });
+            customData: {
+              source: 'github',
+              repoUrl,
+              filePath: normalizedFilePath,
+              contentHash: hash,
+            },
+          });
         }
-        
+
         if (topicDataForToc.tid) {
           tocEntries.push(topicDataForToc);
         }
@@ -113,18 +113,17 @@ program
           await nodebb.updateTopic(tocTopic.tid, tocTopic.mainPid, { content: tocMarkdown });
         } else {
           await nodebb.createTopic({
-              cid: masterCid,
-              title: config.toc_title,
-              content: tocMarkdown,
-              _uid: config.importer_uid,
-              tags: [tocFilenameTag]
+            cid: masterCid,
+            title: config.toc_title,
+            content: tocMarkdown,
+            _uid: config.importer_uid,
+            tags: [tocFilenameTag],
           });
         }
-        console.log(chalk.green.bold(`\nSuccessfully created or updated the Table of Contents topic!`));
+        console.log(chalk.green.bold('\nSuccessfully created or updated the Table of Contents topic!'));
       }
-      
-      console.log(chalk.bold.magenta('\n\n--- Import Process Complete ---'));
 
+      console.log(chalk.bold.magenta('\n\n--- Import Process Complete ---'));
     } catch (error) {
       console.error(chalk.red.bold('\n--- Import Process Failed ---'));
       if (error.stack) {
