@@ -20,7 +20,6 @@ program
   .action(async (options) => {
     console.log(chalk.bold.magenta('--- Starting Umber CLI Importer ---'));
 
-    // --- 1. Configuration & Initialization ---
     const configPath = path.join(process.cwd(), 'config.json');
     if (!fs.existsSync(configPath)) {
       console.error(chalk.red('Error: config.json not found. Please copy config.json.example and fill it out.'));
@@ -30,11 +29,12 @@ program
     nodebb.init(config);
     
     const repoUrl = options.repo || config.target_repo_url;
-    
     if (!repoUrl) {
       console.error(chalk.red('Error: Repository URL must be provided via --repo option or in config.json.'));
       process.exit(1);
     }
+
+    const tocEntries = []; // Initialize array to hold ToC data
 
     try {
       const files = await github.fetchRepoContents(repoUrl, config.ignored_paths);
@@ -50,64 +50,75 @@ program
         const fileExtension = path.extname(normalizedFilePath);
         const fileName = path.basename(normalizedFilePath);
 
-        const existingTopic = await nodebb.findTopicByMetadata(encodedPath);
+        let topicDataForToc = { filePath: normalizedFilePath, title: fileName };
+        let existingTopic = await nodebb.findTopicByMetadata(encodedPath);
 
         if (existingTopic) {
-            if (existingTopic.customData.isChunked) {
-                 console.log(chalk.yellow('Topic was chunked. Update logic is not yet implemented. Skipping.'));
-                 continue;
-            }
+          topicDataForToc.tid = existingTopic.tid;
+          topicDataForToc.slug = existingTopic.slug;
           
-            if (existingTopic.customData.contentHash !== hash) {
-                if (contentStr.length > 32768) {
-                    console.log(chalk.yellow(`Content has changed and now exceeds post limit. Update logic for chunking not implemented. Skipping.`));
-                    continue;
-                }
-                await nodebb.updateTopic(existingTopic.tid, existingTopic.mainPid, { 
-                    content: `\`\`\`${fileExtension.replace('.','') || 'text'}\n${contentStr}\n\`\`\``,
-                    customData: { ...existingTopic.customData, contentHash: hash }
-                });
+          if (existingTopic.customData.isChunked) {
+            console.log(chalk.yellow('Topic was chunked. Update logic is not yet implemented. Skipping.'));
+          } else if (existingTopic.customData.contentHash !== hash) {
+            if (contentStr.length > 32768) {
+              console.log(chalk.yellow(`Content has changed and now exceeds post limit. Update logic for chunking not implemented. Skipping.`));
             } else {
-                console.log(chalk.gray('Content is unchanged. Skipping.'));
+              await nodebb.updateTopic(existingTopic.tid, existingTopic.mainPid, { 
+                content: `\`\`\`${fileExtension.replace('.','') || 'text'}\n${contentStr}\n\`\`\``,
+                customData: { ...existingTopic.customData, contentHash: hash }
+              });
             }
+          } else {
+            console.log(chalk.gray('Content is unchanged. Skipping.'));
+          }
         } else {
           const { cid } = await nodebb.findOrCreateCategoryByPath(path.dirname(normalizedFilePath));
           const chunks = utils.chunkText(contentStr);
           const mainPostContent = `\`\`\`${fileExtension.replace('.','') || 'text'}\n${chunks[0]}\n\`\`\``;
 
-          const topicResponse = await nodebb.createTopic({
+          const newTopicData = await nodebb.createTopic({
             cid,
             title: fileName,
             content: mainPostContent,
-            _uid: config.importer_uid, // Pass UID for topic creation too
+            _uid: config.importer_uid,
             tags: [encodedPath, fileExtension.replace('.','')].filter(Boolean),
             customData: {
-              source: 'github',
-              repoUrl: repoUrl,
-              filePath: normalizedFilePath,
-              contentHash: hash,
-              isChunked: chunks.length > 1,
-              chunkCount: chunks.length,
+              source: 'github', repoUrl, filePath: normalizedFilePath, contentHash: hash,
+              isChunked: chunks.length > 1, chunkCount: chunks.length,
             }
           });
+
+          topicDataForToc.tid = newTopicData.tid;
+          topicDataForToc.slug = newTopicData.slug;
 
           if (chunks.length > 1) {
             console.log(chalk.blue(`Content split into ${chunks.length} posts.`));
             for (let i = 1; i < chunks.length; i++) {
               const replyContent = `*(Continued from post ${i})*\n\n\`\`\`${fileExtension.replace('.','') || 'text'}\n${chunks[i]}\n\`\`\``;
-              // Pass the UID to the createReply function
-              await nodebb.createReply({ tid: topicResponse.tid, content: replyContent, _uid: config.importer_uid });
+              await nodebb.createReply({ tid: newTopicData.tid, content: replyContent, _uid: config.importer_uid });
               await new Promise(resolve => setTimeout(resolve, 1000));
             }
           }
         }
+        tocEntries.push(topicDataForToc);
+      }
+
+      // --- NEW: Post the Table of Contents at the end ---
+      if (config.generate_toc && tocEntries.length > 0) {
+        const tocMarkdown = utils.generateTocMarkdown(tocEntries, config);
+        await nodebb.createTopic({
+            cid: config.toc_cid,
+            title: config.toc_title,
+            content: tocMarkdown,
+            _uid: config.importer_uid,
+        });
+        console.log(chalk.green.bold(`\nSuccessfully created Table of Contents topic!`));
       }
       
       console.log(chalk.bold.magenta('\n\n--- Import Process Complete ---'));
 
     } catch (error) {
       console.error(chalk.red.bold('\n--- Import Process Failed ---'));
-      // Add more detailed error logging
       if (error.stack) {
         console.error(error.stack);
       }
