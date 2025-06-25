@@ -49,7 +49,9 @@ program
         console.log(`\nProcessing: ${chalk.bold(normalizedFilePath)}`);
         
         const contentStr = file.content.toString('utf-8');
-        const hash = utils.calculateHash(contentStr);
+        // Normalize all line endings to \n before hashing
+        const normalizedContent = contentStr.replace(/\r\n/g, '\n');
+        const hash = utils.calculateHash(normalizedContent);
         const fileName = path.basename(normalizedFilePath);
         const directoryPath = path.dirname(normalizedFilePath);
 
@@ -79,41 +81,21 @@ program
         } else {
           const pathTags = directoryPath.split(path.sep).filter(p => p !== '.');
           const allTags = [...pathTags, filenameTag];
-          
-          const chunks = utils.chunkText(contentStr);
-          const mainPostContent = `\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${chunks[0]}\n\`\`\``;
+          const mainPostContent = `\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${contentStr}\n\`\`\``;
 
-          const newTopicData = await nodebb.createTopic({
+          await nodebb.createTopic({
             cid: parentCid,
             title: fileName,
             content: mainPostContent,
             _uid: config.importer_uid,
             tags: allTags,
-            customData: {
-              source: 'github',
-              repoUrl,
-              filePath: normalizedFilePath,
-              contentHash: hash,
-              isChunked: chunks.length > 1,
-              chunkCount: chunks.length,
-            }
-          });
-
-          // If the topic was created, add its data for the ToC
-          if (newTopicData && newTopicData.tid) {
-            topicDataForToc.tid = newTopicData.tid;
-            topicDataForToc.slug = newTopicData.slug;
-
-            // And if it was chunked, create the replies
-            if (chunks.length > 1) {
-              console.log(chalk.blue(`Content split into ${chunks.length} posts.`));
-              for (let i = 1; i < chunks.length; i++) {
-                const replyContent = `*(Continued from post ${i})*\n\n\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${chunks[i]}\n\`\`\``;
-                await nodebb.createReply({ tid: newTopicData.tid, content: replyContent, _uid: config.importer_uid });
-                await new Promise(resolve => setTimeout(resolve, 1000));
-              }
-            }
-          }
+                customData: {
+                    source: 'github',
+                    repoUrl,
+                    filePath: normalizedFilePath,
+                    contentHash: hash,
+                }
+            });
         }
         
         if (topicDataForToc.tid) {
