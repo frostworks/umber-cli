@@ -49,14 +49,8 @@ program
         const fileName = path.basename(normalizedFilePath);
         const directoryPath = path.dirname(normalizedFilePath);
 
-        // --- NEW LOGIC ---
-        // 1. Get the parent category ID first.
         const { cid: parentCid } = await nodebb.findOrCreateCategoryByPath(directoryPath);
-
-        // 2. Create a simple, unique tag for the filename.
         const filenameTag = utils.createFilenameTag(fileName);
-
-        // 3. Find the topic using the combination of the filename tag AND the parent CID.
         let existingTopic = await nodebb.findTopicByMetadata(filenameTag, parentCid);
         
         let topicDataForToc = { filePath: normalizedFilePath, title: fileName };
@@ -67,34 +61,44 @@ program
           
           if (existingTopic.customData.contentHash !== hash) {
             console.log(chalk.cyan(`Content has changed. Updating topic TID: ${existingTopic.tid}...`));
-            // We can now safely update chunked posts too if we implement that logic here
             await nodebb.updateTopic(existingTopic.tid, existingTopic.mainPid, { 
-              content: `\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${contentStr}\n\`\`\``,
-              customData: { ...existingTopic.customData, contentHash: hash }
+              content: contentStr // Pass the full content; updateTopic is not chunked yet
             });
           } else {
             console.log(chalk.gray('Content is unchanged. Skipping.'));
           }
         } else {
-          // 4. If not found, create it with simple, useful tags.
+          // --- RE-IMPLEMENTING CHUNKING LOGIC HERE ---
           const pathTags = directoryPath.split(path.sep).filter(p => p !== '.');
           const allTags = [...pathTags, filenameTag];
+          
+          const chunks = utils.chunkText(contentStr);
+          const mainPostContent = `\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${chunks[0]}\n\`\`\``;
 
-          // For this version, we are not re-implementing chunking to keep the change focused.
-          // We can add it back easily if needed.
           const newTopicData = await nodebb.createTopic({
             cid: parentCid,
             title: fileName,
-            content: `\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${contentStr}\n\`\`\``,
+            content: mainPostContent,
             _uid: config.importer_uid,
             tags: allTags,
             customData: {
               source: 'github', repoUrl, filePath: normalizedFilePath, contentHash: hash,
+              isChunked: chunks.length > 1,
+              chunkCount: chunks.length,
             }
           });
 
           topicDataForToc.tid = newTopicData.tid;
           topicDataForToc.slug = newTopicData.slug;
+
+          if (chunks.length > 1) {
+            console.log(chalk.blue(`Content split into ${chunks.length} posts.`));
+            for (let i = 1; i < chunks.length; i++) {
+              const replyContent = `*(Continued from post ${i})*\n\n\`\`\`${path.extname(fileName).replace('.','') || 'text'}\n${chunks[i]}\n\`\`\``;
+              await nodebb.createReply({ tid: newTopicData.tid, content: replyContent, _uid: config.importer_uid });
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
         }
 
         if (topicDataForToc.tid) {
@@ -102,6 +106,7 @@ program
         }
       }
 
+      // ToC Generation logic remains the same
       if (config.generate_toc && tocEntries.length > 0) {
         const tocMarkdown = utils.generateTocMarkdown(tocEntries, config);
         const tocFilenameTag = utils.createFilenameTag(config.toc_title);
