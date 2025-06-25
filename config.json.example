@@ -1,12 +1,11 @@
 {
   "nodebb_url": "http://127.0.0.1:4567",
-  "nodebb_api_token": "YOUR_NODEBB_MASTER_TOKEN_HERE",
+  "nodebb_api_token": "YOUR_MASTER_TOKEN_HERE",
   "importer_uid": 1,
   "target_repo_url": "https://github.com/athros/ADOM_Guidebook",
-  "ignored_paths": [".git", ".github", "README.md"],
-
+  "ignored_paths": [".git", ".github", "README.md"]",
+  "master_category_name": "ADOM Guidebook Import",
   "generate_toc": true,
-  "toc_cid": 0,
   "toc_title": "Master Table of Contents",
-  "toc_header_content": "This topic serves as a master index for all imported documents. The content is organized into subcategories that mirror the structure of the source repository."
+  "toc_header_content": "This topic serves as a master index..."
 }
